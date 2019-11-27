@@ -23,8 +23,9 @@
 
   <UsingTask TaskName="ZipFiles" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.v4.0.dll">
     <ParameterGroup>
-      <FileList ParameterType="System.String" Required="true" />
+      <InputFiles ParameterType="System.String" Required="true" />
       <OutputArchiveFileName ParameterType="System.String" Required="true" />
+      <ProjectDirectory ParameterType="System.String" Required="false" />
     </ParameterGroup>
     <Task>
       <Reference Include="System.IO.Compression.FileSystem" />
@@ -34,26 +35,41 @@
       <Using Namespace="System.IO.Compression" />
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-            using (FileStream archiveFile = File.Create(OutputArchiveFileName))
+          Log.LogMessage("Zipping: " + InputFiles);
+          using (FileStream archiveFile = File.Create(OutputArchiveFileName))
+          {
             using (var archive = new ZipArchive(archiveFile, ZipArchiveMode.Create))
             {
-                foreach (string file in FileList.Split(';'))
+              foreach (string file in InputFiles.Split(';'))
+              {
+					      if(!string.IsNullOrEmpty(ProjectDirectory))
                 {
-                    var sourceDestintationPair = file.Split('>');
-                    var source = sourceDestintationPair[0];
-                    var destination = sourceDestintationPair.Length > 1 ? sourceDestintationPair[1] : sourceDestintationPair[0];
-                    archive.CreateEntryFromFile(source, destination);
+                  string relativePath = file.StartsWith(ProjectDirectory) ? file.Substring(ProjectDirectory.Length) : file;
+                  archive.CreateEntryFromFile(file, relativePath);
                 }
+					      else
+                {
+                  archive.CreateEntryFromFile(file, Path.GetFileName(file));
+					      }
+              }
             }
+          }
         ]]>
       </Code>
     </Task>
   </UsingTask>
 
+  <ItemGroup>
+    <Content Include="Configuration\editor.config" />
+    <Content Include="manifest.json" />
+  </ItemGroup>
+
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <ReplaceFileText InputFilename="manifest.json" OutputFilename="manifest.json" MatchText="GLOBAL_UNIQUE_ID_PLACEHOLDER" ReplacementText="$(ProjectName)" />
     <ReplaceFileText InputFilename="manifest.json" OutputFilename="manifest.json" MatchText="EXTENSION_ID_PLACEHOLDER" ReplacementText="$(ProjectName)" />
-    <ZipFiles OutputArchiveFileName="$(ProjectName).zip" FileList="manifest.json;editor.config>Configuration\editor.config" />
+    <ZipFiles OutputArchiveFileName="$(ProjectName).zip" InputFiles="@(Content->'%(FullPath)', ';')" ProjectDirectory="$(ProjectDir)" />
   </Target>
+
+
 
 </Project>
